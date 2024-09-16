@@ -1,0 +1,7 @@
+aws-cdk-lib~=2.150.0
+constructs>=10.0.0,<11.0.0
+paramiko~=3.4.0
+inquirer~=3.4.0
+colorama~=0.4.6
+prettytable~=3.11.0
+cdk-monitoring-constructs~=8.1.0

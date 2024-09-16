@@ -1,0 +1,29 @@
+{
+    "Description": "SFTP Sync Service for Provider 1",
+    "Name": "SFTP-Provider-1",
+    "Schedule": "@hourly",
+    "Url": "sftp-service.provider1.com",
+    "SecurityPolicyName": "TransferSFTPConnectorSecurityPolicy-2024-03",
+    "SyncSettings": [
+        {
+            "LocalRepository": {
+                "BucketName": "my-local-bucket",
+                "Prefix": "sftp-provider-1/full-sync"
+            },
+            "RemoteFolders": {
+                "Folder": "/home/folder-1",
+                "Recursive": true
+            }
+        },
+        {
+            "LocalRepository": {
+                "BucketName": "my-other-local-bucket",
+                "Prefix": "sftp-provider-1/root"
+            },
+            "RemoteFolders": {
+                "Folder": "/home/folder-2",
+                "Recursive": false
+            }
+        }
+    ]
+}
