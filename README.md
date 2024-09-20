@@ -118,6 +118,22 @@ For the Cron expression, you can use any of the pre-defined TAGs for simplicity 
 | @saturday | 0 0 ? * 7 * |
 | @every10min | 0/10 * * * ? * |
 
+### Replaceable Tags in Remote Folder Paths
+
+The solution supports the use of replaceable tags in the remote folder paths. This feature allows for dynamic folder selection based on the current date (in UTC). The following tags are available:
+
+- `%year%`: Replaced with the current four-digit year (e.g., 2024)
+- `%month%`: Replaced with the current two-digit month (e.g., 03 for March)
+- `%day%`: Replaced with the current two-digit day of the month (e.g., 15)
+
+You can use these tags individually or in combination within the `RemoteFolders` > `Folder` path in your configuration. The solution allows you to define your own format. For example:
+
+- "/data/%year%": Lists only the folder for the current year
+- "/data/%year%/%month%": Lists the folder for the current year and month
+- "/data/%year%-%month%-%day%": Lists the folder for the specific date
+
+This feature allows for more flexible and automated folder synchronization based on current dates, which is particularly useful for organizing providing data partitioned by time periods.
+
 ### Trusted Public Key configuration
 Transfer Family Connector service allows you to validate the identity of the remote server by configuring an expected trusted host key for the connection. You can optionally add more than one Key, and you need to do so in the `PublicKey` within the JSON configuration file for each remote server as a list of strings containing the trusted certificates. You can follow [this guide](https://docs.aws.amazon.com/transfer/latest/APIReference/API_SftpConnectorConfig.html) on how to get the cert and the expected format.
 
