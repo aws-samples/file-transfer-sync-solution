@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.0.2 - 2024-09-25
+
+### Added features
+- Small changes to the readme file for completion on the installation process.
+- Added support for ports other than 22 on the CLI and text validations.
+
 ## 1.0.1 - 2024-09-20
 
 ### Added features

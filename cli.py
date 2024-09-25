@@ -39,9 +39,9 @@ def get_config_files():
 
 def validate_url(answers, current):
     if not current:
-        return True
-    if not re.match(r'^([a-zA-Z0-9]([-a-zA-Z0-9]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$', current):
-        raise errors.ValidationError('', reason='Invalid URL format. Please enter a valid FQDN without protocol or port.')
+        raise errors.ValidationError('', reason='URL cannot be empty')
+    if not re.match(r'^([a-zA-Z0-9]([-a-zA-Z0-9]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(?::\d+)?$', current):
+        raise errors.ValidationError('', reason='Invalid URL format. Please enter a valid FQDN[:port] without protocol.')
     return True
 
 def validate_name(answers, current):
@@ -267,7 +267,7 @@ def main():
         questions = [
             inquirer.Text('Name', message="Enter Name", validate=validate_name, default=config.get('Name', '')),
             inquirer.Text('Description', message="Enter Description", default=config.get('Description', '')),
-            inquirer.Text('Url', message="Enter Url", validate=validate_url, default=config.get('Url', '')),
+            inquirer.Text('Url', message="Enter Url and optionally port (FQDN[:port])", validate=validate_url, default=config.get('Url', '')),
             inquirer.List('SecurityPolicyName',
                         message="Select SecurityPolicyName",
                         choices=['TransferSFTPConnectorSecurityPolicy-2024-03', 'TransferSFTPConnectorSecurityPolicy-2023-07'],
@@ -318,14 +318,18 @@ def main():
             add_new_key = True
         
         if add_new_key:
-            host_key = fetch_host_key(config['Url'])
+            if ':' in config['Url']:
+                host, port = config['Url'].split(':')
+                host_key = fetch_host_key(host, int(port))
+            else:
+                host_key = fetch_host_key(config['Url'])
             if host_key:
                 if host_key in public_keys:
                     print_colored(f"The fetched host key already exists in the configuration:", Fore.YELLOW)
                     print(host_key)
                 else:
                     add_fetched_key = inquirer.confirm(
-                        message=f"Do you want to add the following new host key?\n{host_key}",
+                        message=f"Do you want to add the following new host key? (Y/n) \n{host_key}",
                         default=True
                     )
                     if add_fetched_key:

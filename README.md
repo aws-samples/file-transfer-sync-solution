@@ -75,7 +75,7 @@ The configuration file structure and content needs the following data:
     "Description": <Connection Description>,
     "Name": <Identifying name for resources, no spaces allowed>,
     "Schedule": <Tag or AWS Cron Expression>,
-    "Url": <Remote SFTP Server URL, only FQDN>,
+    "Url": <Remote SFTP Server URL, FQDN and Port allowed>,
     "SecurityPolicyName": <TransferSFTPConnectorSecurityPolicy-2024-03 or TransferSFTPConnectorSecurityPolicy-2023-07>,
     "SyncSettings": [
         {
@@ -221,7 +221,13 @@ Step 5: Create new configuration files running the provided CLI and following th
 python3 cli.py
 ```
 
-Step 6: At this point you can now synthesize the CloudFormation template for this code and deploy it.
+Step 6: If this is your first time using CDK with the target AWS Account you'll need to bootstrap the environment.
+
+```
+cdk bootstrap
+```
+
+Step 7: At this point you can now synthesize the CloudFormation template for this code and deploy it.
 
 ```
 cdk synth
