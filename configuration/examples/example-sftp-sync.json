@@ -8,7 +8,8 @@
         {
             "LocalRepository": {
                 "BucketName": "my-local-bucket",
-                "Prefix": "sftp-provider-1/full-sync"
+                "Prefix": "sftp-provider-1/full-sync",
+                "KmsKeyArn": "arn:aws:kms:<region>:<accountID>:key/<keyId>"
             },
             "RemoteFolders": {
                 "Folder": "/home/folder-1",

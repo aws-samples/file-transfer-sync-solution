@@ -89,9 +89,17 @@ def validate_schedule(answers, current):
     
     raise errors.ValidationError('', reason='Invalid schedule. Use predefined tags or a valid AWS Cron expression.')
 
+def validate_kms_key_arn(answers, current):
+    if not current:
+        return True
+    kms_arn_pattern = r'^arn:aws:kms:[a-z0-9-]+:\d{12}:key/[a-f0-9-]{36}$'
+    if not re.match(kms_arn_pattern, current):
+        raise errors.ValidationError('', reason='Invalid KMS Key ARN format. Please enter a valid ARN.')
+    return True
+
 def edit_sync_settings(sync_settings):
     while True:
-        choices = [f"{s['LocalRepository']['BucketName']} -> {s['RemoteFolders']['Folder']}" for s in sync_settings]
+        choices = [f"{s['LocalRepository']['BucketName']} -> {s['RemoteFolders']['Folder']} (KMS: {s['LocalRepository'].get('KmsKeyArn', 'None')})" for s in sync_settings]
         choices.append("Add new sync setting")
         choices.append("Finish editing")
 
@@ -120,10 +128,13 @@ def edit_sync_settings(sync_settings):
 
 def prompt_sync_setting(existing=None):
     questions = [
-        inquirer.Text('bucket_name', message="Enter BucketName",
+        inquirer.Text('bucket_name', message="Enter the target S3 Bucket name",
                       default=existing['LocalRepository']['BucketName'] if existing else None),
-        inquirer.Text('prefix', message="Enter Prefix",
+        inquirer.Text('prefix', message="Enter the target Prefix",
                       default=existing['LocalRepository']['Prefix'] if existing else None),
+        inquirer.Text('kms_key_arn', message="Enter KMS Key ARN (optional)",
+                      default=existing['LocalRepository'].get('KmsKeyArn', '') if existing else '',
+                      validate=validate_kms_key_arn),
         inquirer.Text('remote_folder', message="Enter Remote Folder (%year%, %month% and %day% tags are supported)",
                       default=existing['RemoteFolders']['Folder'] if existing else None),
         inquirer.Confirm('recursive', message="Is it recursive?",
@@ -131,7 +142,7 @@ def prompt_sync_setting(existing=None):
     ]
 
     answers = inquirer.prompt(questions)
-    return {
+    sync_setting = {
         "LocalRepository": {
             "BucketName": safe_bucket_name(answers['bucket_name']),
             "Prefix": safe_prefix(answers['prefix'])
@@ -141,6 +152,11 @@ def prompt_sync_setting(existing=None):
             "Recursive": answers['recursive']
         }
     }
+    
+    if answers['kms_key_arn']:
+        sync_setting['LocalRepository']['KmsKeyArn'] = answers['kms_key_arn']
+    
+    return sync_setting
 
 def fetch_host_key(hostname, port=22):
     try:
@@ -171,12 +187,13 @@ def confirm_config(config):
     
     print_colored("\nSyncSettings:", Fore.CYAN)
     sync_table = PrettyTable()
-    sync_table.field_names = ["Local", "Remote"]
+    sync_table.field_names = ["Local", "Remote", "KMS Key ARN"]
     sync_table.align = "l"
     for setting in config.get('SyncSettings', []):
         local = f"{setting['LocalRepository']['BucketName']}/{setting['LocalRepository']['Prefix']}"
         remote = setting['RemoteFolders']['Folder']
-        sync_table.add_row([local, remote])
+        kms_key_arn = setting['LocalRepository'].get('KmsKeyArn', 'None')
+        sync_table.add_row([local, remote, kms_key_arn])
     print(sync_table)
     
     return inquirer.confirm("Do you want to save this configuration?", default=True)
@@ -241,12 +258,13 @@ def main():
                 print(table)
                 print_colored("\nSyncSettings:", Fore.CYAN)
                 sync_table = PrettyTable()
-                sync_table.field_names = ["Local", "Remote"]
+                sync_table.field_names = ["Local", "Remote", "KMS Key ARN"]
                 sync_table.align = "l"
                 for setting in config.get('SyncSettings', []):
                     local = f"{setting['LocalRepository']['BucketName']}/{setting['LocalRepository']['Prefix']}"
                     remote = setting['RemoteFolders']['Folder']
-                    sync_table.add_row([local, remote])
+                    kms_key_arn = setting['LocalRepository'].get('KmsKeyArn', 'None')
+                    sync_table.add_row([local, remote, kms_key_arn])
                 print(sync_table)
             continue
         elif answers['action'] == 'Delete configuration':
@@ -337,6 +355,7 @@ def main():
                     else:
                         manual_key = inquirer.text(message="Enter the public key manually")
                         if manual_key and manual_key not in public_keys:
+                            public_keys
                             public_keys.append(manual_key)
                         elif manual_key in public_keys:
                             print_colored("This key already exists in the configuration.", Fore.YELLOW)
@@ -375,4 +394,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print_colored(f"An error occurred. Please check the log file for details.", Fore.RED)
+        print_colored(f"An error occurred: {str(e)}", Fore.RED)
+        print_colored("Please check the log file for details.", Fore.RED)

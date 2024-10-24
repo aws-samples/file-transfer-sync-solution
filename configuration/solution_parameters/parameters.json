@@ -1,0 +1,7 @@
+{
+    "permission_boundary_policy_arn": "",
+    "powertools_service_name": "transfer-sync-service",
+    "powertools_log_level": "INFO",
+    "boto_version": "1.35.47",
+    "pyawscron_version": "1.0.7"   
+}

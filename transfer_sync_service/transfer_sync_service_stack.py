@@ -7,6 +7,7 @@ from aws_cdk import (
     aws_s3 as s3,
     aws_sns as sns,
     aws_iam as iam,
+    aws_kms as kms,
     aws_secretsmanager as secretmanager,
     aws_transfer as transfer,
     aws_scheduler as scheduler,
@@ -23,36 +24,44 @@ from cdk_monitoring_constructs import (
 )
 from constructs import Construct
 
+with open('./configuration/solution_parameters/parameters.json', encoding='utf8') as solution_parameters:
+    solution_parameters = json.load(solution_parameters)
 
-def install_package(package, target):
-    subprocess.check_call([
-        sys.executable,
-        '-m',
-        'pip',
-        'install',
-        '-q',
-        package,
-        '--target',
-        target,
-        '--no-user'
-    ])
-
-# Install dependencies for Lambda layers if not already present
-if not os.path.exists('transfer_sync_service/lambda/boto3_lambda_layer'):
-    print('Installing some dependencies for Lambda layers')
-    install_package(
-        'boto3~=1.35.0',
-        'transfer_sync_service/lambda/boto3_lambda_layer/python/lib/python3.12/site-packages/'
-    )
-
-if not os.path.exists('transfer_sync_service/lambda/sync_files/pyawscron'):
-    print('Installing some dependencies for Lambda')
-    install_package(
-        'pyawscron~=1.0.7',
-        'transfer_sync_service/lambda/sync_files/'
-    )
+boto_version = solution_parameters['boto_version']
+permission_boundary_policy_arn = solution_parameters['permission_boundary_policy_arn']
 
 class TransferSyncServiceStack(Stack):
+    def install_package(package, target):
+        subprocess.check_call([
+            sys.executable,
+            '-m',
+            'pip',
+            'install',
+            '-q',
+            package,
+            '--target',
+            target,
+            '--no-user'
+        ])
+
+    # Install dependencies for Lambda layers if not already present
+    if not os.path.exists(f'transfer_sync_service/lambda/boto3_{boto_version}_lambda_layer'):
+        print('Installing some dependencies for Lambda layers')
+        install_package(
+            f'boto3~={boto_version}',
+            f'transfer_sync_service/lambda/boto3_{boto_version}_lambda_layer/python/lib/python3.12/site-packages/'
+        )
+
+    ###
+    # Need to improve this, maybe create a folder to simplify version check and updates.
+    ###
+
+    if not os.path.exists('transfer_sync_service/lambda/sync_files/pyawscron'):
+        print('Installing some dependencies for Lambda')
+        install_package(
+            f'pyawscron~={solution_parameters['pyawscron_version']}',
+            'transfer_sync_service/lambda/sync_files/'
+        )
 
     def files(self, path):
         """Yield all files in the given directory."""
@@ -84,6 +93,14 @@ class TransferSyncServiceStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # Add Permission Boundaries if defined
+        if permission_boundary_policy_arn != '':
+            boundary_policy = iam.ManagedPolicy.from_managed_policy_arn(
+                self, 'BoundaryPolicy', 
+                managed_policy_arn=permission_boundary_policy_arn
+            )
+            iam.PermissionsBoundary.of(self).apply(boundary_policy)
+
         # Monitoring services
         # Create SNS topic for notifications
         notification_topic = sns.Topic(self, 'NotificationTopic')
@@ -108,10 +125,18 @@ class TransferSyncServiceStack(Stack):
             )
         )
 
+        report_kms_key = kms.Key(
+            self, 'ReportKmsKey', 
+            enable_key_rotation=True
+        )
+
         # Create an S3 bucket for the SFTP Transfer Family Connector reports
         report_bucket = s3.Bucket(
             self, 'TransferSyncReportBucket',
             removal_policy=RemovalPolicy.DESTROY,
+            encryption=s3.BucketEncryption.KMS,
+            encryption_key=report_kms_key,
+            bucket_key_enabled=True,
             auto_delete_objects=True,
             enforce_ssl=True
         )
@@ -121,20 +146,20 @@ class TransferSyncServiceStack(Stack):
             id='Delete old objects',
         )
 
-        powertools_service_name = 'transfer-sync-service'
-        powertools_log_level = 'INFO'
+        powertools_service_name = solution_parameters['powertools_service_name']
+        powertools_log_level = solution_parameters['powertools_log_level']
 
         # Set up Lambda layers
         powertools_layer = lambda_.LayerVersion.from_layer_version_arn(
             self, 'PowerToolsLayer',
-            layer_version_arn=f'arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV2-Arm64:75',
+            layer_version_arn=f'arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-arm64:3'
         )
         boto3_lambda_layer = lambda_.LayerVersion(
             self, 'TransferSyncBoto3LambdaLayer',
-            code=lambda_.AssetCode.from_asset(os.path.join(os.getcwd(), 'transfer_sync_service/lambda/boto3_lambda_layer/')),
+            code=lambda_.AssetCode.from_asset(os.path.join(os.getcwd(), f'transfer_sync_service/lambda/boto3_{boto_version}_lambda_layer/')),
             compatible_runtimes=[lambda_.Runtime.PYTHON_3_12],
-            description='Boto3 Library version 1.34.134 for Python 3.12',
-            layer_version_name='python3-12-boto3-v1-34-134'
+            description=f'Boto3 Library version {boto_version} for Python 3.12',
+            layer_version_name=f'python3-12-boto3-v{boto_version.replace('.','-')}'
         )
 
         # Create Lambda functions
@@ -257,7 +282,7 @@ class TransferSyncServiceStack(Stack):
             chain_definition, 
             mode=sfn.ProcessorMode.INLINE,
             execution_type=sfn.ProcessorType.STANDARD
-        )        
+        )
 
         state_machine = sfn.StateMachine(
             self, 'TransferSyncSfn',
@@ -268,8 +293,7 @@ class TransferSyncServiceStack(Stack):
         monitoring.add_large_header('Transfer Family Connectors')
 
         # Process configuration files
-        for file in self.files('./configuration/sftp/'):
-            print(file)
+        for file in self.files('./configuration/sftp/'):            
             with open(f'./configuration/sftp/{file}', encoding='utf8') as service_config:
                 config = json.load(service_config)
                 print(f'Creating resources for {config["Name"]}...')
@@ -308,9 +332,6 @@ class TransferSyncServiceStack(Stack):
                         iam.PolicyStatement(
                             actions=[
                                 's3:PutObject',
-                                's3:GetObject',
-                                's3:GetObjectVersion',
-                                's3:GetObjectACL',
                                 's3:PutObjectACL'
                             ],
                             resources=[f'arn:aws:s3:::{sync_setting["LocalRepository"]["BucketName"]}/*']
@@ -325,10 +346,29 @@ class TransferSyncServiceStack(Stack):
                             resources=[f'arn:aws:s3:::{sync_setting["LocalRepository"]["BucketName"]}']
                         )
                     )
+                    if 'KmsKeyArn' in sync_setting["LocalRepository"]:
+                        transfer_access_role.add_to_policy(
+                            iam.PolicyStatement(
+                                actions=[
+                                    'kms:Encrypt',
+                                    'kms:GenerateDataKey*',
+                                    'kms:Decrypt' # Decrypt is needed because of S3 multi-part uploads for big files, but the role doesn't have s3:GetObject
+                                ],
+                                resources=[f'{sync_setting["LocalRepository"]["KmsKeyArn"]}']
+                            )
+                        )
+                        sync_files.role.add_to_policy(
+                            iam.PolicyStatement(
+                                actions=[
+                                    'kms:Encrypt',
+                                    'kms:GenerateDataKey*'
+                                ],
+                                resources=[f'{sync_setting["LocalRepository"]["KmsKeyArn"]}']
+                            )
+                        )
                     sync_files.role.add_to_policy(
                         iam.PolicyStatement(
                             actions=[
-                                's3:GetObject',
                                 's3:GetObjectAttributes',
                                 's3:PutObject',
                                 's3:PutObjectACL'

@@ -1,5 +1,4 @@
 import boto3
-import botocore
 import json
 import copy
 from aws_lambda_powertools import Logger

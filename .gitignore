@@ -5,11 +5,12 @@ __pycache__
 .venv
 *.egg-info
 .vscode
+.DS_Store
 
 # CDK asset staging directory
 .cdk.staging
 cdk.out
 auth
-transfer_sync_service/lambda/boto3_lambda_layer/*
+transfer_sync_service/lambda/boto3_*/*
 transfer_sync_service/lambda/sync_files/*
 !transfer_sync_service/lambda/sync_files/sync_files.py
