@@ -164,28 +164,32 @@ def should_transfer_file(file: Dict[str, Any], first_copy: bool, safe_time_compa
     # If it's the first copy, transfer all files
     if first_copy:
         return True
+    
+    #############################################################################################################################
+    ## Need to implement a better safe_time_compare method to avoid cost duplication. Disabled for now.                        ##
+    ## Only data updated in source SFTP between previous execution and S3 Object timestamp should be copied.                   ##
+    ## Also need to add a feature flag to allow the user to decide if deleted files in target S3 Bucket needs to be re-copied. ##
+    #############################################################################################################################
 
     # For subsequent copies, check if the file is new or modified
-    if safe_time_compare < file_time:
-        try:
-            # Check if the file exists in the destination and compare modification times
-            obj = s3.head_object(
-                Bucket=event['SyncSetting']['LocalRepository']['BucketName'],
-                Key=f"{event['SyncSetting']['LocalRepository']['Prefix']}{file['filePath']}"
-            )
-            if obj['LastModified'] < file_time:
-                logger.info(f"File {file['filePath']} has been modified since last copy.")
-                return True
-            else:
-                logger.info(f"File {file['filePath']} has not been modified since last copy.")
-                return False
-        except botocore.exceptions.ClientError:
-            # If the file doesn't exist in the destination, it should be transferred
-            logger.info(f"File {file['filePath']} has not been copied before.")
+    try:
+        # Check if the file exists in the destination and compare modification times
+        obj = s3.head_object(
+            Bucket=event['SyncSetting']['LocalRepository']['BucketName'],
+            Key=f"{event['SyncSetting']['LocalRepository']['Prefix']}{file['filePath']}"
+        )
+        if obj['LastModified'] < file_time:
+            logger.info(f"File {file['filePath']} has been modified since last copy.")
             return True
-    else:
-        logger.info(f"File {file['filePath']} is not new.")
-        return False
+        # elif obj['LastModified'] >= safe_time_compare:
+        #     logger.info(f"File {file['filePath']} has been modified since safe time.")
+        else:
+            logger.info(f"File {file['filePath']} has not been modified since last copy.")
+            return False
+    except botocore.exceptions.ClientError:
+        # If the file doesn't exist in the destination, it should be transferred
+        logger.info(f"File {file['filePath']} has not been copied before.")
+        return True
 
 def transfer_files(file_list: List[str], event: Dict[str, Any]) -> None:
     """
@@ -252,10 +256,10 @@ def calculate_safe_time_compare(schedule: str, start_time: datetime) -> datetime
     interval = (next_times[1] - next_times[0]).total_seconds() / 60  # in minutes
 
     if 1 <= interval <= 5:
-        n = 5
-    elif 5 < interval <= 60:
+        n = 3
+    elif 5 < interval <= 10:
         n = 2
-    elif 60 < interval <= 1440:  # 24 hours
+    elif 10 < interval <= 60:
         n = 1
     else:
         n = 0

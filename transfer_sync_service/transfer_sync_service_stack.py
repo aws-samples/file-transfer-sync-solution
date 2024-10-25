@@ -59,7 +59,7 @@ class TransferSyncServiceStack(Stack):
     if not os.path.exists('transfer_sync_service/lambda/sync_files/pyawscron'):
         print('Installing some dependencies for Lambda')
         install_package(
-            f'pyawscron~={solution_parameters['pyawscron_version']}',
+            f'pyawscron~={solution_parameters["pyawscron_version"]}',
             'transfer_sync_service/lambda/sync_files/'
         )
 
@@ -293,7 +293,7 @@ class TransferSyncServiceStack(Stack):
         monitoring.add_large_header('Transfer Family Connectors')
 
         # Process configuration files
-        for file in self.files('./configuration/sftp/'):            
+        for file in self.files('./configuration/sftp/'):
             with open(f'./configuration/sftp/{file}', encoding='utf8') as service_config:
                 config = json.load(service_config)
                 print(f'Creating resources for {config["Name"]}...')
@@ -370,6 +370,7 @@ class TransferSyncServiceStack(Stack):
                         iam.PolicyStatement(
                             actions=[
                                 's3:GetObjectAttributes',
+                                's3:GetObject',
                                 's3:PutObject',
                                 's3:PutObjectACL'
                             ],

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.1.1 - 2024-10-25
+### Bug Fixes
+- Fixed a typo on the CDK Stack preventing new deployments.
+- Fixed an issue with the `sync_files` lambda function while comparing timestamps. For now the `safe_time_compare` feature is disabled until a better method can be implemented.
+
 ## 1.1.0 - 2024-10-25
 ### Added features
 - Added the ability to define an optional KMS Key for the target buckets in the configuration files. This allows you to set up a default encryption with KMS on the target buckets.
