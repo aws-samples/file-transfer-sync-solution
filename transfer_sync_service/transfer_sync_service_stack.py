@@ -159,7 +159,7 @@ class TransferSyncServiceStack(Stack):
             code=lambda_.AssetCode.from_asset(os.path.join(os.getcwd(), f'transfer_sync_service/lambda/boto3_{boto_version}_lambda_layer/')),
             compatible_runtimes=[lambda_.Runtime.PYTHON_3_12],
             description=f'Boto3 Library version {boto_version} for Python 3.12',
-            layer_version_name=f'python3-12-boto3-v{boto_version.replace('.','-')}'
+            layer_version_name=f'python3-12-boto3-v{boto_version.replace(".","-")}'
         )
 
         # Create Lambda functions
