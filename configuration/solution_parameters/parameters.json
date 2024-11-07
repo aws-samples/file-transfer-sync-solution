@@ -3,5 +3,9 @@
     "powertools_service_name": "transfer-sync-service",
     "powertools_log_level": "INFO",
     "boto_version": "1.35.47",
-    "pyawscron_version": "1.0.7"   
+    "pyawscron_version": "1.0.7",
+    "additional_tags": {
+        "Project": "transfer-sync-service",
+        "Environment": "dev"
+    }
 }

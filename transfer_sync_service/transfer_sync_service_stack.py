@@ -4,6 +4,7 @@ from aws_cdk import (
     Stack,
     RemovalPolicy,
     CfnTag,
+    Tags,
     aws_s3 as s3,
     aws_sns as sns,
     aws_iam as iam,
@@ -29,6 +30,7 @@ with open('./configuration/solution_parameters/parameters.json', encoding='utf8'
 
 boto_version = solution_parameters['boto_version']
 permission_boundary_policy_arn = solution_parameters['permission_boundary_policy_arn']
+additional_tags = solution_parameters['additional_tags']
 
 class TransferSyncServiceStack(Stack):
     def install_package(package, target):
@@ -100,6 +102,10 @@ class TransferSyncServiceStack(Stack):
                 managed_policy_arn=permission_boundary_policy_arn
             )
             iam.PermissionsBoundary.of(self).apply(boundary_policy)
+
+        if additional_tags != '':
+            for key, value in additional_tags.items():
+                Tags.of(self).add(key=key,value=value)
 
         # Monitoring services
         # Create SNS topic for notifications

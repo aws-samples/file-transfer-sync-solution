@@ -164,32 +164,28 @@ def should_transfer_file(file: Dict[str, Any], first_copy: bool, safe_time_compa
     # If it's the first copy, transfer all files
     if first_copy:
         return True
-    
-    #############################################################################################################################
-    ## Need to implement a better safe_time_compare method to avoid cost duplication. Disabled for now.                        ##
-    ## Only data updated in source SFTP between previous execution and S3 Object timestamp should be copied.                   ##
-    ## Also need to add a feature flag to allow the user to decide if deleted files in target S3 Bucket needs to be re-copied. ##
-    #############################################################################################################################
 
     # For subsequent copies, check if the file is new or modified
-    try:
-        # Check if the file exists in the destination and compare modification times
-        obj = s3.head_object(
-            Bucket=event['SyncSetting']['LocalRepository']['BucketName'],
-            Key=f"{event['SyncSetting']['LocalRepository']['Prefix']}{file['filePath']}"
-        )
-        if obj['LastModified'] < file_time:
-            logger.info(f"File {file['filePath']} has been modified since last copy.")
+    if safe_time_compare < file_time:
+        try:
+            # Check if the file exists in the destination and compare modification times
+            obj = s3.head_object(
+                Bucket=event['SyncSetting']['LocalRepository']['BucketName'],
+                Key=f"{event['SyncSetting']['LocalRepository']['Prefix']}{file['filePath']}"
+            )
+            if obj['LastModified'] < file_time:
+                logger.info(f"File {file['filePath']} has been modified since last copy.")
+                return True
+            else:
+                logger.info(f"File {file['filePath']} has not been modified since last copy.")
+                return False
+        except botocore.exceptions.ClientError:
+            # If the file doesn't exist in the destination, it should be transferred
+            logger.info(f"File {file['filePath']} has not been copied before.")
             return True
-        # elif obj['LastModified'] >= safe_time_compare:
-        #     logger.info(f"File {file['filePath']} has been modified since safe time.")
-        else:
-            logger.info(f"File {file['filePath']} has not been modified since last copy.")
-            return False
-    except botocore.exceptions.ClientError:
-        # If the file doesn't exist in the destination, it should be transferred
-        logger.info(f"File {file['filePath']} has not been copied before.")
-        return True
+    else:
+        logger.info(f"File {file['filePath']} is not new.")
+        return False
 
 def transfer_files(file_list: List[str], event: Dict[str, Any]) -> None:
     """
@@ -245,27 +241,15 @@ def calculate_safe_time_compare(schedule: str, start_time: datetime) -> datetime
     Returns:
         datetime: The safe time to compare against.
     """
-    # Get the next 2 scheduled times
-    next_times = AWSCron.get_next_n_schedule(2, start_time, schedule)
-    
-    if len(next_times) < 2:
-        # If we can't get 2 next times, use the start time
-        return start_time
-    
-    # Calculate the interval between executions
-    interval = (next_times[1] - next_times[0]).total_seconds() / 60  # in minutes
 
-    if 1 <= interval <= 5:
-        n = 3
-    elif 5 < interval <= 10:
-        n = 2
-    elif 10 < interval <= 60:
-        n = 1
-    else:
-        n = 0
+    # Getting the previous 2 executions time based on the cron schedule
+    prev_times = AWSCron.get_prev_n_schedule(2, start_time, schedule)
+    
+    # Calculating the time gap between execution to accommodate execution delays safely
+    start_diff = (start_time - prev_times[0]).total_seconds()
+    expected_diff = (prev_times[0] - prev_times[1]).total_seconds()
 
-    if n > 0:
-        prev_times = AWSCron.get_prev_n_schedule(n, start_time, schedule)
-        return prev_times[-1] if prev_times else start_time
+    if expected_diff > start_diff:
+        return prev_times[1]
     else:
-        return start_time
+        return prev_times[0]

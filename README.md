@@ -193,6 +193,9 @@ This project is built using Python3 and CDK, before you start, make sure to have
 
 ## Deployment
 
+### Tagging resources
+By default the solution applies some native CDK and Name tags. If your deployment requires additional tags (for eg. Cost Allocation, Environment, Team, etc), you can now update the [solution parameters file](configuration/solution_parameters/parameters.json) by modifying the JSON for `additional_tags` with your specific Keys and Values.
+
 ### Permission Boundaries
 If you are enforcing the usage of IAM Permission Boundaries for IAM Roles created in the account, you can update the [solution parameters file](configuration/solution_parameters/parameters.json) and add the managed policy ARN you are using to the `permission_boundary_policy_arn` parameter.
 

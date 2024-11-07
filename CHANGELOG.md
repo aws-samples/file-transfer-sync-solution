@@ -2,8 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.2.0 - 2024-11-07
+### Added features
+- Added the ability to define tags for every resource created by the solution. This can be configured using the `configuration/solution_parameters/parameters.json` file.
+
+### Changed
+- Re-implemented the `safe_time_compare` feature to better accommodate scheduling execution delays and avoid data transfer duplications.
+
 ## 1.1.1 - 2024-10-25
-### Bug Fixes
+### Bug Fixes
 - Fixed a typo on the CDK Stack preventing new deployments.
 - Fixed an issue with the `sync_files` lambda function while comparing timestamps. For now the `safe_time_compare` feature is disabled until a better method can be implemented.
 
