@@ -24,7 +24,19 @@
             "RemoteFolders": {
                 "Folder": "/home/folder-2",
                 "Recursive": false
-            }
+            },
+            "Schedule": "@weekly"
+        },
+        {
+            "LocalRepository": {
+                "BucketName": "my-other-local-bucket",
+                "Prefix": "sftp-provider-1/root"
+            },
+            "RemoteFolders": {
+                "Folder": "/home/folder-3",
+                "Recursive": false
+            },
+            "Schedule": "on-demand"
         }
     ]
 }

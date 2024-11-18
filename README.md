@@ -1,12 +1,13 @@
 # File Transfer Synchronization solution
 ## Introduction
 
-This solution implements an automated strategy for synchronizing remote SFTP repositories with local S3 buckets. It schedules and orchestrates the process of listing remote directories, detecting changes, and transferring files.
+This solution implements an automated strategy for synchronizing remote SFTP repositories with local S3 buckets. It orchestrates the process of listing remote directories, detecting changes, and transferring files. It can be run based on a scheduler or on-demand.
 
 **The solution leverages the following AWS services:**
 - [Amazon EventBridge Scheduler](https://docs.aws.amazon.com/scheduler/latest/UserGuide/what-is-scheduler.html)
 - [AWS Step Functions](https://aws.amazon.com/step-functions/)
 - [AWS Transfer Family SFTP Connectors](https://docs.aws.amazon.com/transfer/latest/userguide/creating-connectors.html)
+- [AWS Systems Manager Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html)
 
 **Key features:**
 - Monitors remote SFTP servers using SFTP Connectors' [List capabilities](https://docs.aws.amazon.com/transfer/latest/userguide/sftp-connector-list-dir.html)
@@ -28,13 +29,19 @@ A combination of Lambda, Step Functions and Transfer Family features facilitates
 
 ### Component Interactions
 
-1. **Event Bridge Scheduler**
-   - The Event Bridge Scheduler triggers the Step Function execution based on the configured schedule (e.g., daily, hourly, or a custom cron expression).
-   - There are multiple schedules based on the Configuration files in this project and the Event passed to Step Functions includes the required parameters according to each schedule configuration.
+1. **Execution Phase**
+
+   a. **On-Demand Execution**
+      - You can manually execute the Step Function by using the event structure stored in SSM Parameter Store.
+      - While executing the Step Function, you can modify the `FromTimestamp` parameter in the event to specify the starting date and time for the file copy process.
+
+   b. **Event Bridge Scheduler**
+      - The Event Bridge Scheduler triggers the Step Function execution based on the configured schedule (e.g., daily, hourly, or a custom cron expression).
+      - There are multiple schedules based on the Configuration files in this project and the Event passed to Step Functions includes the required parameters according to each schedule configuration.
 
 2. **Step Function**
    - The Step Function orchestrates the entire process and coordinates the interaction between different components.
-   - For each `SyncSettings`, it invokes the `RemoteFoldersList` Lambda function interacts with the Transfer Family SFTP Connector to asynchronously retrieve a list of files in the remote folders to be synchronized.
+   - For each event, it invokes the `RemoteFoldersList` Lambda function interacts with the Transfer Family SFTP Connector to asynchronously retrieve a list of files in the remote folders to be synchronized.
    - Then use the `GetListStatus` Lambda function, to check if the `List` process is finished and optionally get the list of child folder if `Recursive` is enabled to run a list again for those sub folders.
    - The `SyncRemoteFolder` Lambda function detects if new or modified files are available in the remote server, and then invokes the Transfer Family SFTP Connector to asynchronously transfer those files from the remote repository to the local S3 bucket.
    - If any errors occur during the synchronization process, the Step Function captures the error and sends a notification to the configured SNS topic.
@@ -70,11 +77,11 @@ To do so, you just need to push new configuration changes as `json` files to `./
 
 The configuration file structure and content needs the following data:
 
-```
+```json
 {
     "Description": <Connection Description>,
     "Name": <Identifying name for resources, no spaces allowed>,
-    "Schedule": <Tag or AWS Cron Expression>,
+    "Schedule": <Tag, AWS Cron Expression or "on-demand">,
     "Url": <Remote SFTP Server URL, FQDN and Port allowed>,
     "SecurityPolicyName": <TransferSFTPConnectorSecurityPolicy-2024-03 or TransferSFTPConnectorSecurityPolicy-2023-07>,
     "SyncSettings": [
@@ -87,7 +94,8 @@ The configuration file structure and content needs the following data:
             "RemoteFolders": {
                 "Folder": <Remote Folder to Sync>,
                 "Recursive": <true / false>
-            }
+            },
+            (OPTIONAL) "Schedule": <Tag, AWS Cron Expression or "on-demand">
         },
         { ... }
     ],
@@ -101,23 +109,69 @@ The configuration file structure and content needs the following data:
 You can check the [example configuration file](configuration/examples/example-sftp-sync.json). Within AWS Account service limits, you can have as many configuration files as you need, and on the `SyncSettings` configuration list, you can define as many Remote to Local pairs as you wish and all will be run during the same schedule for the same Remote SFTP Server.
 The CDK Application will automatically resolve all the IAM Role permissions needed for the process to work and will create all the needed resources, including Event Bridge Scheduler, SFTP Connector and Secrets Manager Secret.
 
-### Cron configuration
-For the Cron expression, you can use any of the pre-defined TAGs for simplicity or you can define your own cron expression. Keep in mind that this needs to be an [AWS Event Bridge Cron expression format](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-scheduled-rule-pattern.html#eb-cron-expressions). Available TAGs are:
+### Schedule Configuration
 
-| TAG | Expression |
-| :---------------- | :------: |
-| @monthly | 0 0 1 * ? * |
-| @daily | 0 0 * * ? * |
-| @hourly | 0 * * * ? * |
-| @minutely | * * * * ? * |
-| @sunday | 0 0 ? * 1 * |
-| @monday | 0 0 ? * 2 * |
-| @tuesday | 0 0 ? * 3 * |
-| @wednesday | 0 0 ? * 4 * |
-| @thursday | 0 0 ? * 5 * |
-| @friday | 0 0 ? * 6 * |
-| @saturday | 0 0 ? * 7 * |
-| @every10min | 0/10 * * * ? * |
+The file synchronization process can be configured to run based on a schedule or on-demand. The solution supports both global schedules for entire configurations and individual schedules for specific sync settings.
+
+#### Scheduling Strategies
+
+1. **Cron / Tag Schedule**: 
+   - Only considers files created in the remote repository between the current execution timestamp and the previous execution timestamp.
+   - Useful for regular, periodic synchronization while avoiding duplicate transfers.
+
+2. **On-Demand execution**:
+   - When the `Schedule` value is configured as `on-demand`, at the Step Function execution phase you can set up an additional optional parameter called `FromTimestamp` that allows you to define from when (UTC Timestamp) files are considered to be copied. 
+   - By default the value for `FromTimestamp` is set to 0, meaning that all files (newer than 1 January 1970 00:00:00) will be compared.
+   - Copy any modify files from the timestamp specified, including files that may have been deleted from S3 between runs but still exist on the remote SFTP server.
+
+#### Individual Sync Setting Schedules
+
+From version 1.3.0, you can define specific schedules for each item in your `SyncSettings` configuration list. This allows for:
+- Different schedules for multiple folders within a single SFTP connection
+- More granular control over synchronization timing
+- Reduced resource consumption by eliminating the need for multiple configuration files
+
+Individual item level schedules take precedence over the general `Schedule` setting.
+
+**Example scenario:**
+you need to synchronize a remote SFTP Server with 10 folders, 5 of those are updates once a day at midnight, 2 are updated hourly, 1 is updated weekly and for the remaining 2 you get notified when there are new files to run an on-demand copy. Before this update, you would have need to create 4 Configuration files, each with its dedicated Transfer Family Connector, public IPs and Secrets. Today you can create a single Configuration file (and it's resources) with different `Schedule` parameters for each item in the `SyncSettings` array according to the business needs.
+```json
+{
+  "Schedule": "@daily",
+  "SyncSettings": [
+    {
+      "LocalRepository": { ... },
+      "RemoteFolders": { ... },
+      "Schedule": "@hourly"
+    },
+    {
+      "LocalRepository": { ... },
+      "RemoteFolders": { ... }
+    },
+    {
+      "LocalRepository": { ... },
+      "RemoteFolders": { ... },
+      "Schedule": "@weekly"
+    },
+    {
+      "LocalRepository": { ... },
+      "RemoteFolders": { ... },
+      "Schedule": "on-demand"
+    }
+  ]
+}
+```
+
+#### Available Schedule Options
+* Predefined TAGs: @monthly, @daily, @hourly, @minutely, @sunday, @monday, @tuesday, @wednesday, @thursday, @friday, @saturday, @every10min
+* Custom Cron Expressions, keep in mind that this needs to be an [AWS Event Bridge Cron expression format](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-scheduled-rule-pattern.html#eb-cron-expressions)
+* "on-demand" for manual execution
+
+#### Best Practices
+* Choose schedules that align with your data update frequency
+* Use individual schedules for folders with different update patterns
+* Consider resource usage and costs when setting frequent schedules
+* Test your configuration to ensure it meets your synchronization needs
 
 ### Target Bucket KMS Encryption
 
@@ -187,7 +241,7 @@ After the first replication, the solution will only copy new or modified files f
 This project is built using Python3 and CDK, before you start, make sure to have all the pre requirements properly installed in your environment.
 
 * AWS CLI https://aws.amazon.com/cli/ 
-* AWS CDK 2.150.0+ https://docs.aws.amazon.com/cdk/latest/guide/getting_started.html#getting_started_install
+* AWS CDK 2.163.0+ https://docs.aws.amazon.com/cdk/latest/guide/getting_started.html#getting_started_install
 * Python 3.9+
 * Python venv
 

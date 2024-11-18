@@ -343,7 +343,7 @@ def main():
                 host_key = fetch_host_key(config['Url'])
             if host_key:
                 if host_key in public_keys:
-                    print_colored(f"The fetched host key already exists in the configuration:", Fore.YELLOW)
+                    print_colored("The fetched host key already exists in the configuration:", Fore.YELLOW)
                     print(host_key)
                 else:
                     add_fetched_key = inquirer.confirm(

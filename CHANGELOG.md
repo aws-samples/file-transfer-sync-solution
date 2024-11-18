@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.3.0 - 2024-11-18
+### Added features
+- Added manual/on-demand scheduler configuration option. Implements SSM Parameter to store the Step Functions event structure. Note: Impacts file timestamp comparison during runtime; recommended for on-demand use cases only.
+- Added ability to configure individual schedules in `SyncSettings`. Enables different schedules for multiple folders within single SFTP connection. Individual schedules take precedence over general `Schedule` setting. Reduces resource consumption by eliminating need for multiple configuration files and prevents the creation of dedicated Transfer Family Connector (including public IPs) and Secrets per configuration file.
+
+### Changed
+- Implemented individual EventBridge Scheduler rules for each `SyncSettings` item in the configuration files.
+- Simplified Step Function by removing MAP State. Individual records now processed per execution, enabling above new features and providing improved error visibility for failed executions. Further improvements planned.
+
 ## 1.2.0 - 2024-11-07
 ### Added features
 - Added the ability to define tags for every resource created by the solution. This can be configured using the `configuration/solution_parameters/parameters.json` file.
